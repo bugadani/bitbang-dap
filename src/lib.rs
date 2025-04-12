@@ -1,5 +1,8 @@
 #![cfg_attr(not(test), no_std)]
 
+// This mod MUST go first, so that the others see its macros.
+pub(crate) mod fmt;
+
 use core::num::NonZeroU32;
 
 use dap_rs::{
@@ -88,7 +91,7 @@ where
         self.req(port, Dir::Read, addr);
 
         let ack = self.shift_in(4); // turnaround + ack
-        match ack & 0b111 {
+        match (ack >> 1) & 0b111 {
             0b001 => {} // ok
             0b010 => {
                 self.shift_in(1); // turnaround
@@ -172,6 +175,7 @@ where
     }
 
     fn set_target_clock(&mut self, max_frequency: u32) -> bool {
+        debug!("set frequency({})", max_frequency);
         match NonZeroU32::new(max_frequency) {
             Some(frequency) => {
                 self.target_clock = Some(frequency);
@@ -234,10 +238,12 @@ where
     const AVAILABLE: bool = true;
 
     fn read_inner(&mut self, port: APnDP, addr: DPRegister) -> swd::Result<u32> {
+        debug!("read_inner({:?}, {:?})", port, addr);
         self.read(port, addr)
     }
 
     fn write_inner(&mut self, port: APnDP, addr: DPRegister, data: u32) -> swd::Result<()> {
+        debug!("write_inner({:?}, {:?}, {:x})", port, addr, data);
         self.write(port, addr, data)
     }
 
@@ -248,6 +254,7 @@ where
     /// Write a sequence of bits using SWDIO and the clock line running at the configured freq.
     fn write_sequence(&mut self, mut num_bits: usize, data: &[u8]) -> swd::Result<()> {
         self.apply_clock();
+        debug!("write_sequence({})", num_bits);
         for b in data.iter().copied() {
             if num_bits == 0 {
                 break;
@@ -262,6 +269,7 @@ where
     /// Read a sequence of bits using SWDIO and the clock line running at the configured freq.
     fn read_sequence(&mut self, mut num_bits: usize, data: &mut [u8]) -> swd::Result<()> {
         self.apply_clock();
+        debug!("read_sequence({})", num_bits);
         for b in data.iter_mut() {
             if num_bits == 0 {
                 break;
