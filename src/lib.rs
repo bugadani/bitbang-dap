@@ -188,7 +188,11 @@ where
 
 impl<IO: InputOutputPin, D: DelayCycles> Dependencies<Self, Self> for BitbangAdapter<IO, D> {
     fn high_impedance_mode(&mut self) {
-        // todo
+        self.tms_swdio.set_as_input();
+        self.tck_swclk.set_as_input();
+        self.nreset.set_as_input();
+        self.tdi.set_as_input();
+        self.tdo.set_as_input();
     }
 
     fn process_swj_clock(&mut self, max_frequency: u32) -> bool {
