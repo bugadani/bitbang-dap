@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-dap-rs = { git = "https://github.com/bugadani/dap-rs", rev = "0d2f47e" }
+dap-rs = { git = "https://github.com/bugadani/dap-rs", rev = "b726e12" }
 defmt = { version = "1.0", optional = true }
 log = { version = "0.4", optional = true }
 static_cell = "2"
