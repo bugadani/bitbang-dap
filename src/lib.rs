@@ -7,7 +7,7 @@ use core::num::NonZeroU32;
 
 use dap_rs::{
     dap::DelayNs,
-    jtag,
+    jtag::{self, TapConfig},
     swd::{self, APnDP, DPRegister, Swd},
     swj::{Dependencies, Pins},
 };
@@ -41,6 +41,8 @@ pub struct BitbangAdapter<IO: InputOutputPin, D: DelayCycles> {
     delay: D,
     bit_cycles: u32,
     target_clock: Option<NonZeroU32>,
+    swd_config: swd::Config,
+    jtag_config: jtag::Config,
 }
 
 impl<IO, D> BitbangAdapter<IO, D>
@@ -55,6 +57,7 @@ where
         mut tck_swclk: IO,
         mut tdo: IO,
         delay: D,
+        scan_chain: &'static mut [TapConfig],
     ) -> Self {
         nreset.set_high(true);
         nreset.set_as_output();
@@ -66,8 +69,8 @@ where
         //ck.set_pull(Pull::None);
         tck_swclk.set_as_output();
 
-        tdi.set_as_input();
-        tdo.set_as_output();
+        tdi.set_as_output();
+        tdo.set_as_input();
 
         Self {
             nreset,
@@ -78,6 +81,8 @@ where
             delay,
             bit_cycles: 0,
             target_clock: None,
+            swd_config: swd::Config::default(),
+            jtag_config: jtag::Config::new(scan_chain),
         }
     }
 
@@ -159,6 +164,21 @@ where
         val
     }
 
+    fn shift_jtag(&mut self, tms: bool, tdi: u32, num_bits: usize) -> u32 {
+        self.tms_swdio.set_as_output();
+        self.tms_swdio.set_high(tms);
+        let mut tdo = 0;
+        for i in 0..num_bits {
+            self.tdi.set_high(tdi & (1 << i) != 0);
+            self.tck_swclk.set_high(false);
+            self.wait();
+            tdo |= (self.tdo.is_high() as u32) << i;
+            self.tck_swclk.set_high(true);
+            self.wait();
+        }
+        tdo
+    }
+
     fn wait(&mut self) {
         self.delay.delay_cycles(self.bit_cycles);
     }
@@ -173,6 +193,7 @@ where
         }
         // TODO implement proper setup when converting into swd/jtag
         self.tck_swclk.set_as_output();
+        self.tdi.set_as_output();
     }
 
     fn set_target_clock(&mut self, max_frequency: u32) -> bool {
@@ -233,6 +254,14 @@ impl<IO: InputOutputPin, D: DelayCycles> Dependencies<Self, Self> for BitbangAda
     fn process_swj_sequence(&mut self, data: &[u8], num_bits: usize) {
         _ = self.write_sequence(num_bits, data);
     }
+
+    fn swd_config(&mut self) -> &mut swd::Config {
+        &mut self.swd_config
+    }
+
+    fn jtag_config(&mut self) -> &mut jtag::Config {
+        &mut self.jtag_config
+    }
 }
 
 impl<IO, D> swd::Swd<Self> for BitbangAdapter<IO, D>
@@ -285,6 +314,10 @@ where
         }
         Ok(())
     }
+
+    fn config(&mut self) -> &mut swd::Config {
+        &mut self.swd_config
+    }
 }
 
 impl<IO, D> jtag::Jtag<Self> for BitbangAdapter<IO, D>
@@ -292,15 +325,34 @@ where
     IO: InputOutputPin,
     D: DelayCycles,
 {
-    const AVAILABLE: bool = false;
-
-    fn sequences(&mut self, data: &[u8], rxbuf: &mut [u8]) -> u32 {
-        self.apply_clock();
-
-        todo!()
-    }
+    const AVAILABLE: bool = true;
 
     fn set_clock(&mut self, max_frequency: u32) -> bool {
         self.set_target_clock(max_frequency)
+    }
+
+    fn config(&mut self) -> &mut jtag::Config {
+        &mut self.jtag_config
+    }
+
+    fn sequence(&mut self, info: jtag::SequenceInfo, tdi: &[u8], mut rxbuf: &mut [u8]) {
+        for &byte in tdi {
+            let bits = info.n_bits.min(8) as usize;
+            let tdo = self.shift_jtag(info.tms, byte as u32, bits);
+            if info.capture && !rxbuf.is_empty() {
+                rxbuf[0] = tdo as u8;
+                rxbuf = &mut rxbuf[1..];
+            }
+        }
+    }
+
+    fn tms_sequence(&mut self, tms: &[bool]) {
+        for &bit in tms.iter() {
+            self.tms_swdio.set_high(bit);
+            self.tck_swclk.set_high(false);
+            self.wait();
+            self.tck_swclk.set_high(true);
+            self.wait();
+        }
     }
 }
