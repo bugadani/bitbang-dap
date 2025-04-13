@@ -172,6 +172,8 @@ where
 
             self.target_clock = None;
         }
+        // TODO implement proper setup when converting into swd/jtag
+        self.tck_swclk.set_as_output();
     }
 
     fn set_target_clock(&mut self, max_frequency: u32) -> bool {
