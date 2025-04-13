@@ -418,8 +418,10 @@ where
     }
 
     fn sequence(&mut self, info: jtag::SequenceInfo, tdi: &[u8], mut rxbuf: &mut [u8]) {
+        let mut n_bits = info.n_bits;
         for &byte in tdi {
-            let bits = info.n_bits.min(8) as usize;
+            let bits = n_bits.min(8) as usize;
+            n_bits -= bits as u8;
             let tdo = self.inner.shift_jtag(info.tms, byte as u32, bits);
             if info.capture && !rxbuf.is_empty() {
                 rxbuf[0] = tdo as u8;
