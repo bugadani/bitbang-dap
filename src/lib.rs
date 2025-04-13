@@ -139,7 +139,10 @@ where
         self.tms_swdio.set_as_output();
         for i in 0..num_bits {
             self.tms_swdio.set_high(val & (1 << i) != 0);
-            self.clock_pulse();
+            self.tck_swclk.set_high(false);
+            self.wait();
+            self.tck_swclk.set_high(true);
+            self.wait();
         }
     }
 
@@ -147,17 +150,13 @@ where
         self.tms_swdio.set_as_input();
         let mut val = 0;
         for i in 0..num_bits {
+            self.tck_swclk.set_high(false);
+            self.wait();
             val |= (self.tms_swdio.is_high() as u32) << i;
-            self.clock_pulse();
+            self.tck_swclk.set_high(true);
+            self.wait();
         }
         val
-    }
-
-    fn clock_pulse(&mut self) {
-        self.wait();
-        self.tck_swclk.set_high(true);
-        self.wait();
-        self.tck_swclk.set_high(false);
     }
 
     fn wait(&mut self) {
